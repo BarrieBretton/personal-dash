@@ -24,6 +24,13 @@ def init_schema(connection):
         encrypted_payload BYTEA NOT NULL,
         updated_at BIGINT NOT NULL
     )''')
+    # XIAOMI_POWER_STATE_PATCH_V1: last confirmed power and reachability.
+    connection.execute('''CREATE TABLE IF NOT EXISTS device_state (
+        device TEXT PRIMARY KEY,
+        power_on BOOLEAN,
+        reachable BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at BIGINT NOT NULL
+    )''')
 
 
 def save_profile(connection, bundle):
@@ -74,10 +81,19 @@ def collect(connection):
                 device = devices[0]
                 if not device.get('online'):
                     raise RuntimeError('Xiaomi purifier is offline')
-                props = api.get_props([{'did': device['did'], 'siid': 3, 'piid': 4}])
-                if len(props) != 1 or props[0].get('code') != 0:
+                props = api.get_props([
+                    {'did': device['did'], 'siid': 3, 'piid': 4},
+                    {'did': device['did'], 'siid': 2, 'piid': 1},
+                ])
+                values = {
+                    (item.get('siid'), item.get('piid')): item.get('value')
+                    for item in props if item.get('code') == 0
+                }
+                if (3, 4) not in values:
                     raise RuntimeError('Xiaomi PM2.5 property read failed')
-                pm25 = props[0].get('value')
+                pm25 = values[(3, 4)]
+                raw_power = values.get((2, 1))
+                power_on = raw_power if isinstance(raw_power, bool) else None
                 if isinstance(pm25, bool) or not isinstance(pm25, (int, float)) or not 0 <= pm25 <= 600:
                     raise RuntimeError('Invalid PM2.5 reading')
         finally:
@@ -86,5 +102,11 @@ def collect(connection):
             if refreshed != bundle['auth']:
                 save_profile(connection, {'auth': refreshed, 'identity': bundle['identity']})
         now = int(time.time())
+        connection.execute('''INSERT INTO device_state(device,power_on,reachable,updated_at)
+            VALUES (%s,%s,TRUE,%s)
+            ON CONFLICT(device) DO UPDATE SET
+                power_on=EXCLUDED.power_on,
+                reachable=EXCLUDED.reachable,
+                updated_at=EXCLUDED.updated_at''', ('xiaomi', power_on, now))
         connection.execute('INSERT INTO readings(device,pm25,ts) VALUES (%s,%s,%s)', ('xiaomi', float(pm25), now))
-        return {'status': 'collected', 'device': 'xiaomi', 'pm25': float(pm25), 'timestamp': now}
+        return {'status': 'collected', 'device': 'xiaomi', 'pm25': float(pm25), 'power_on': power_on, 'timestamp': now}

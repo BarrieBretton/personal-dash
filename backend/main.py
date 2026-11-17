@@ -157,29 +157,43 @@ def devices(authorization: str | None = Header(None)):
 
     with conn() as c:
         rows = c.execute("""
-            SELECT DISTINCT ON (device)
-                device, pm25, ts
+            SELECT DISTINCT ON (device) device, pm25, ts
             FROM readings
             ORDER BY device, ts DESC, id DESC
         """).fetchall()
+        states = c.execute("""
+            SELECT device, power_on, reachable, updated_at
+            FROM device_state
+        """).fetchall()
 
     latest = {r["device"]: r for r in rows}
+    state_by_device = {r["device"]: r for r in states}
     now = int(time.time())
-
     result = []
 
     for device_id, metadata in DEVICES.items():
         reading = latest.get(device_id)
+        state = state_by_device.get(device_id)
         timestamp = reading["ts"] if reading else None
-
-        status = "unconfigured"
-
-        if timestamp is not None:
-            status = (
-                "live"
-                if 0 <= now - timestamp < 180
-                else "stale"
-            )
+        state_age = now - state["updated_at"] if state else None
+        # XIAOMI_POWER_STATE_PATCH_V1: never equate a missing reading with power off.
+        # Freshness of cloud telemetry determines reachability.
+        if state and 0 <= state_age < 30 and state["reachable"]:
+            status = "live"
+            power_on = state["power_on"]
+            reachable = True
+        elif state:
+            status = "unavailable"
+            power_on = None
+            reachable = False
+        elif timestamp is not None:
+            status = "stale"
+            power_on = None
+            reachable = None
+        else:
+            status = "unconfigured"
+            power_on = None
+            reachable = None
 
         result.append({
             "id": device_id,
@@ -187,7 +201,10 @@ def devices(authorization: str | None = Header(None)):
             "pm25": reading["pm25"] if reading else None,
             "timestamp": timestamp,
             "status": status,
-            "integration": "external bridge required",
+            "power_on": power_on,
+            "reachable": reachable,
+            "state_timestamp": state["updated_at"] if state else None,
+            "integration": "xiaomi cloud" if device_id == "xiaomi" else "external bridge required",
         })
 
     return result
