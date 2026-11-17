@@ -342,11 +342,10 @@
                         <div>
                             <h2>{{d.name}}</h2>
                             <p>{{d.model}} · {{i===0?'Xiaomi Home':'Philips Air+'}}</p>
-                        </div><span class="small"><i class="dot"
-                                :class="{live:d.status==='live'}"></i>{{d.status}}</span>
+                        </div><span class="small" :style="{color:deviceState(d).color}">● {{deviceState(d).label}}</span>
                     </div><svg class="gauge" viewBox="0 0 220 220" aria-label="PM2.5 concentration gauge">
                         <circle cx="110" cy="110" r="87" fill="none" stroke="#2b394a" stroke-width="12" />
-                        <circle cx="110" cy="110" r="87" fill="none" :stroke="i===0?'#66e1ba':'#83aefc'"
+                        <circle cx="110" cy="110" r="87" fill="none" :stroke="quality(d.pm25).color"
                             stroke-width="12" stroke-linecap="round"
                             :stroke-dasharray="`${Math.min(1,(d.pm25||0)/150)*547} 547`"
                             transform="rotate(-90 110 110)" /><text x="110" y="106" fill="#f5f9fc" font-size="52"
@@ -354,9 +353,7 @@
                             x="110" y="132" fill="#93a5ba" font-size="13" text-anchor="middle">µg/m³ PM2.5</text>
                     </svg>
                     <div class="foot"><span class="quality"
-                            :style="{color:i===0?'#66e1ba':'#83aefc'}">{{d.pm25==null?'Awaiting connection':d.pm25
-                            <=15?'Low particulate level':d.pm25<=35?'Elevated particulate level':'High particulate
-                                level'}}</span><span>{{d.timestamp?new Date(d.timestamp*1000).toLocaleTimeString():'No
+                            :style="{color:quality(d.pm25).color}">{{quality(d.pm25).label}}</span><span>{{d.timestamp?new Date(d.timestamp*1000).toLocaleTimeString():'No
                                     readings yet'}}</span></div>
                 </article>
             </div>
@@ -377,8 +374,18 @@
                 </svg>
                 <div class="between small"><span>24 hours ago</span><span>Now</span></div>
             </section>
-            <p class="notice">{{demo?'Illustrative demo data only — not readings from your appliances.':'Readings
-                refresh every 15 seconds; actual freshness depends on the connected data source.'}} PM2.5 (µg/m³) is not
+            <div class="card section" aria-label="CPCB PM2.5 reference bands">
+              <h2>CPCB PM2.5 reference bands</h2>
+              <p class="notice">Concentration breakpoints for 24-hour PM2.5 averages. Live device values are instantaneous, not official AQI.</p>
+              <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px">
+                <div v-for="b in [{name:'Good',range:'0–30',color:'#299C55'},{name:'Satisfactory',range:'31–60',color:'#A4C639'},{name:'Moderate',range:'61–90',color:'#F4C542'},{name:'Poor',range:'91–120',color:'#F28C38'},{name:'Very Poor',range:'121–250',color:'#D84B55'},{name:'Severe',range:'251+',color:'#9B1C31'}]" :key="b.name" style="display:flex;gap:9px;align-items:center;font-size:12px">
+                  <span :style="{background:b.color,width:'9px',height:'30px',borderRadius:'5px',flexShrink:0}"></span>
+                  <span><strong>{{b.name}}</strong><br><span style="color:var(--muted)">{{b.range}} µg/m³</span></span>
+                </div>
+              </div>
+            </div>
+            <p class="notice">CPCB India 24-hour PM2.5 reference bands applied to current readings (not official AQI). {{demo?'Illustrative demo data only — not readings from your appliances.':'Readings
+                refresh every 5 seconds; actual freshness depends on the connected data source.'}} PM2.5 (µg/m³) is not
                 the same as official AQI.</p>
         </main>
         <main class="settings" v-show="tab==='settings'">
@@ -435,6 +442,29 @@
         history: [],
         lines: [],
 
+        // CPCB_PM25_BANDS_V1: CPCB 24-hour PM2.5 reference breakpoints.
+        // A live sensor reading is NOT a calculated official AQI.
+        quality(pm25) {
+          const value = Number(pm25);
+          if (pm25 == null || !Number.isFinite(value) || value < 0)
+            return {label: 'No reading', color: '#64748b'};
+          if (value <= 30) return {label: 'Good', color: '#299C55'};
+          if (value <= 60) return {label: 'Satisfactory', color: '#A4C639'};
+          if (value <= 90) return {label: 'Moderate', color: '#F4C542'};
+          if (value <= 120) return {label: 'Poor', color: '#F28C38'};
+          if (value <= 250) return {label: 'Very Poor', color: '#D84B55'};
+          return {label: 'Severe', color: '#9B1C31'};
+        },
+        deviceState(d) {
+          if (d.status === 'demo') return {label:'Preview', color:'#94a3b8'};
+          if (d.status === 'unconfigured') return {label:'Not connected', color:'#94a3b8'};
+          if (d.status === 'offline' || d.status === 'unavailable')
+            return {label:'Unavailable', color:'#EF6464'};
+          if (d.status === 'stale') return {label:'Stale reading', color:'#F2B94B'};
+          if (d.power_on === false) return {label:'Switched off', color:'#94a3b8'};
+          if (d.power_on === true) return {label:'Powered on', color:'#27C99A'};
+          return {label:'Power unknown', color:'#94a3b8'};
+        },
         start() {
           this.refresh();
           setInterval(() => {
