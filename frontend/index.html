@@ -305,6 +305,15 @@
                 height: 190px
             }
         }
+    /* Responsive controls and cards */
+        .power-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+        .power-control{display:flex;align-items:center;gap:10px;background:#233247;color:#f3f7fd;border:1px solid #3a5068;border-radius:999px;padding:11px 18px;cursor:pointer;font-weight:700;min-height:44px;transition:background .2s,transform .2s}
+        .power-control[aria-pressed="true"]{background:#144f43;border-color:#278c71;color:#bff9e8}
+        .power-control:disabled{opacity:.5;cursor:not-allowed}
+        .power-control:not(:disabled):active{transform:scale(.97)}
+        .power-note{font-size:12px;color:var(--muted);line-height:1.4}
+        @media(max-width:720px){.top{flex-wrap:wrap}.nav{width:100%;justify-content:flex-start}.hero .between{align-items:flex-start;flex-wrap:wrap}.power-row{flex-wrap:wrap}.power-control{margin-left:auto}}
+        @media(max-width:390px){.shell{padding:18px 12px}.card{padding:17px}.nav{flex-wrap:wrap}.nav button{flex:1}.sectionhead{flex-wrap:wrap}}
     </style>
 </head>
 
@@ -355,6 +364,13 @@
                     <div class="foot"><span class="quality"
                             :style="{color:quality(d.pm25).color}">{{quality(d.pm25).label}}</span><span>{{d.timestamp?new Date(d.timestamp*1000).toLocaleTimeString():'No
                                     readings yet'}}</span></div>
+                    <div class="power-row" v-if="d.id==='xiaomi'">
+                      <span class="power-note">{{powerBusy?'Sending command…':powerError || (d.power_on===null || d.power_on===undefined ? 'Power status unavailable' : 'Power control · Xiaomi Cloud')}}</span>
+                      <button class="power-control" type="button"
+                        :aria-pressed="d.power_on===true"
+                        :disabled="powerBusy || demo || !online || d.status!=='live' || typeof d.power_on!=='boolean'"
+                        @click="toggleXiaomi(d)">{{powerBusy?'Please wait…':d.power_on===true?'Turn off':'Turn on'}}</button>
+                    </div>
                 </article>
             </div>
             <section class="card section">
@@ -423,6 +439,9 @@
         url: '',
         key: '',
         error: '',
+        refreshing: false,
+        powerBusy: false,
+        powerError: '',
         devices: [
           {
             id: 'xiaomi',
@@ -468,8 +487,36 @@
         start() {
           this.refresh();
           setInterval(() => {
-            if (!this.demo) this.refresh();
+            if (!this.demo && !this.refreshing && !this.powerBusy) this.refresh();
           }, 5000);
+          document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && !this.demo && !this.powerBusy) this.refresh();
+          });
+        },
+
+        async toggleXiaomi(device) {
+          if (this.powerBusy || device.status !== 'live' || typeof device.power_on !== 'boolean') return;
+          this.powerBusy = true;
+          this.powerError = '';
+          try {
+            const desired = !device.power_on;
+            const response = await fetch('/api/xiaomi/power', {
+              method: 'POST', credentials: 'same-origin', cache: 'no-store',
+              headers: {'Content-Type':'application/json','X-Atmosphere-Action':'power'},
+              body: JSON.stringify({power_on: desired})
+            });
+            if (response.status === 401) { location.assign('/login'); return; }
+            if (!response.ok) throw new Error('Power command failed (HTTP ' + response.status + ')');
+            const result = await response.json();
+            if (result.status !== 'confirmed') {
+              this.powerError = 'Command sent; waiting for device confirmation';
+            }
+          } catch (error) {
+            this.powerError = error.message;
+          } finally {
+            this.powerBusy = false;
+            await this.refresh();
+          }
         },
 
         makeDemo() {
@@ -510,6 +557,8 @@
         },
 
         async refresh() {
+          if (this.refreshing || this.powerBusy) return;
+          this.refreshing = true;
           try {
             const response = await fetch('/api/devices', {
               credentials: 'same-origin',
@@ -558,6 +607,7 @@
               })
             );
 
+            // Replace device objects atomically so power-state changes render immediately.
             this.devices = devices;
             this.history = histories;
             this.demo = false;
@@ -605,6 +655,8 @@
               });
               this.lines = [];
             }
+          } finally {
+            this.refreshing = false;
           }
         }
       };

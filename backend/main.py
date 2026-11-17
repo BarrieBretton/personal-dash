@@ -12,7 +12,7 @@ from psycopg.rows import dict_row
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from xiaomi_collector import init_schema, save_profile, collect
+from xiaomi_collector import init_schema, save_profile, collect, set_xiaomi_power
 
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -289,3 +289,23 @@ def xiaomi_collect(authorization: str | None = Header(None)):
         import logging
         logging.getLogger('atmosphere').exception('Xiaomi collection failed')
         raise HTTPException(502, 'Xiaomi collection failed; inspect server logs')
+
+
+class PowerCommand(BaseModel):
+    power_on: bool
+
+
+@app.post('/internal/xiaomi/power', include_in_schema=False)
+def xiaomi_power(command: PowerCommand, authorization: str | None = Header(None)):
+    authorize(authorization, os.getenv('CONTROL_API_KEY', ''))
+    try:
+        with conn() as c:
+            result = set_xiaomi_power(c, command.power_on)
+        if result['status'] == 'busy':
+            raise HTTPException(409, 'Xiaomi collector busy; retry')
+        return result
+    except HTTPException:
+        raise
+    except Exception:
+        logging.getLogger('atmosphere').exception('Xiaomi power control failed')
+        raise HTTPException(502, 'Xiaomi power control failed')

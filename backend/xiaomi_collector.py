@@ -110,3 +110,48 @@ def collect(connection):
                 updated_at=EXCLUDED.updated_at''', ('xiaomi', power_on, now))
         connection.execute('INSERT INTO readings(device,pm25,ts) VALUES (%s,%s,%s)', ('xiaomi', float(pm25), now))
         return {'status': 'collected', 'device': 'xiaomi', 'pm25': float(pm25), 'power_on': power_on, 'timestamp': now}
+
+
+def set_xiaomi_power(connection, desired: bool):
+    """Change the power property, then verify it from Xiaomi Cloud."""
+    if not isinstance(desired, bool):
+        raise ValueError('Power value must be boolean')
+    lock = connection.execute(
+        'SELECT pg_try_advisory_xact_lock(%s) AS locked', (761902441,)
+    ).fetchone()['locked']
+    if not lock:
+        return {'status': 'busy'}
+    bundle = load_profile(connection)
+    with tempfile.TemporaryDirectory(prefix='atmosphere-xiaomi-control-') as directory:
+        profile = Profile('default', root=Path(directory))
+        profile.path.mkdir(parents=True, exist_ok=True)
+        profile.auth_path.write_text(json.dumps(bundle['auth']), encoding='utf-8')
+        profile.identity_path.write_text(json.dumps(bundle['identity']), encoding='utf-8')
+        os.chmod(profile.auth_path, 0o600)
+        os.chmod(profile.identity_path, 0o600)
+        try:
+            with Session(profile, region=REGION) as session:
+                api = CloudApi(session)
+                devices = [d for d in api.fetch_all()['devices'].values()
+                           if d.get('model') == MODEL]
+                if len(devices) != 1 or not devices[0].get('online'):
+                    raise RuntimeError('Xiaomi purifier unavailable or ambiguous')
+                did = devices[0]['did']
+                response = api.set_props([{'did': did, 'siid': 2, 'piid': 1, 'value': desired}])
+                if len(response) != 1 or response[0].get('code') not in (0, 1):
+                    raise RuntimeError('Xiaomi rejected power command')
+                # Cloud acceptance is not proof that the physical device has changed.
+                result = api.get_props([{'did': did, 'siid': 2, 'piid': 1}])
+                actual = result[0].get('value') if len(result) == 1 and result[0].get('code') == 0 else None
+        finally:
+            refreshed = json.loads(profile.auth_path.read_text(encoding='utf-8'))
+            if refreshed != bundle['auth']:
+                save_profile(connection, {'auth': refreshed, 'identity': bundle['identity']})
+    if isinstance(actual, bool) and actual == desired:
+        connection.execute("""INSERT INTO device_state(device,power_on,reachable,updated_at)
+            VALUES (%s,%s,TRUE,%s)
+            ON CONFLICT(device) DO UPDATE SET power_on=EXCLUDED.power_on,
+            reachable=EXCLUDED.reachable, updated_at=EXCLUDED.updated_at""",
+            ('xiaomi', actual, int(time.time())))
+    return {'status': 'confirmed' if actual == desired else 'pending',
+            'requested_power_on': desired, 'power_on': actual}

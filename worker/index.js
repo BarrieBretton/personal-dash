@@ -201,6 +201,34 @@ export default {
       return Response.redirect(new URL("/login", request.url), 302);
     }
 
+    if (path === "/api/xiaomi/power") {
+      if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+      if (request.headers.get("Origin") !== url.origin ||
+          request.headers.get("X-Atmosphere-Action") !== "power") {
+        return new Response("Forbidden", { status: 403 });
+      }
+      if (!env.API_BASE_URL || !env.CONTROL_API_KEY) {
+        return new Response("Control not configured", { status: 503 });
+      }
+      let body;
+      try { body = await request.json(); } catch { return new Response("Invalid JSON", { status: 400 }); }
+      if (!body || typeof body.power_on !== "boolean" || Object.keys(body).length !== 1) {
+        return new Response("Invalid power command", { status: 400 });
+      }
+      const target = new URL('/internal/xiaomi/power', env.API_BASE_URL);
+      if (target.protocol !== 'https:') return new Response('Invalid backend', { status: 503 });
+      try {
+        const response = await fetch(target.toString(), {
+          method: 'POST', redirect: 'manual',
+          headers: { 'Authorization': `Bearer ${env.CONTROL_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        return secureHeaders(response);
+      } catch {
+        return Response.json({ detail: 'Backend unavailable' }, { status: 502 });
+      }
+    }
+
     if (path.startsWith("/api/")) {
       if (request.method !== "GET") {
         return new Response("Method not allowed", { status: 405 });
