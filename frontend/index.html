@@ -1,5 +1,589 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Atmosphere · Personal Command Center</title><script defer src="https://unpkg.com/petite-vue@0.4.1/dist/petite-vue.iife.js"></script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"><style>
-:root{color-scheme:dark;--bg:#090e17;--panel:#121b29;--line:#243246;--muted:#8d9caf;--text:#f1f5fa;--mint:#66e1ba;--blue:#83aefc}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 85% 0%,#14243b 0%,transparent 38%),var(--bg);color:var(--text);font-family:'DM Sans',sans-serif}button,input{font:inherit}.shell{max-width:1200px;margin:auto;padding:35px 32px 70px}.top,.between{display:flex;align-items:center;justify-content:space-between;gap:16px}.brand{display:flex;align-items:center;gap:12px}.logo{background:#223147;border:1px solid #36475e;padding:10px;border-radius:13px;font-size:22px}.brand strong{font:800 19px Manrope}.small{font-size:12px;color:var(--muted)}.nav{display:flex;gap:8px}.nav button,.subtle{border:1px solid var(--line);background:#152033;color:#b7c5d6;padding:10px 15px;border-radius:11px;cursor:pointer}.nav button.active{color:white;background:#253750}.hero{margin:60px 0 32px}.eyebrow{text-transform:uppercase;letter-spacing:2px;font-size:11px;color:#8da1b8;font-weight:700}.hero h1{font:800 clamp(30px,4vw,47px) Manrope;letter-spacing:-2px;margin:12px 0}.hero p{color:var(--muted);margin:0}.pill{border:1px solid #2b4d4b;color:var(--mint);background:#14312e;padding:9px 13px;border-radius:30px;font-size:12px}.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.card{background:linear-gradient(145deg,#172234,#101925);border:1px solid var(--line);border-radius:21px;padding:27px;min-width:0}.cardhead{display:flex;align-items:start;justify-content:space-between}.card h2{font:700 18px Manrope;margin:0 0 7px}.card p{color:var(--muted);font-size:13px;margin:0}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#657184;margin-right:7px}.dot.live{background:var(--mint);box-shadow:0 0 14px #4ce8ad}.gauge{width:220px;height:220px;max-width:100%;margin:23px auto 17px;display:block}.gauge circle{transition:stroke-dasharray .5s}.gauge text{font-family:Manrope}.foot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:18px;color:var(--muted);font-size:12px}.quality{font-weight:700}.section{margin-top:22px}.sectionhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}.sectionhead h2{font:700 17px Manrope;margin:0}.chart{width:100%;height:185px;display:block}.legend{display:flex;gap:22px;color:var(--muted);font-size:12px}.key{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px}.settings{margin-top:24px}.settings input{background:#0d1522;color:white;border:1px solid #35455b;border-radius:10px;padding:11px;width:100%;margin:7px 0 14px}.settings label{font-size:12px;color:#aebdd0;display:block}.settings button{background:#d9e9f8;color:#101824;border:0;border-radius:10px;padding:11px 16px;cursor:pointer}.notice{color:#a9bbcf;font-size:13px;line-height:1.6}.hidden{display:none!important}@media(max-width:720px){.shell{padding:23px 17px}.cards{grid-template-columns:1fr}.hero{margin:40px 0 25px}.nav button{padding:9px}.card{padding:22px}.gauge{width:190px;height:190px}}
-</style></head><body><div class="shell" v-scope="Dashboard()" @vue:mounted="start()"><header class="top"><div class="brand"><span class="logo">◈</span><div><strong>Atmosphere</strong><div class="small">PERSONAL COMMAND CENTER</div></div></div><div class="nav"><button :class="{active:tab==='overview'}" @click="tab='overview'">Overview</button><button :class="{active:tab==='settings'}" @click="tab='settings'">Settings</button></div></header><main v-show="tab==='overview'"><div class="hero"><div class="between"><div><div class="eyebrow">YOUR SPACE · AIR QUALITY</div><h1>Room to breathe.</h1><p>A clearer picture of the air around you.</p></div><span class="pill">● {{demo?'Preview mode':online?'Connected':'Disconnected'}}</span></div></div><div class="cards"><article class="card" v-for="(d,i) in devices" :key="d.id"><div class="cardhead"><div><h2>{{d.name}}</h2><p>{{d.model}} · {{i===0?'Xiaomi Home':'Philips Air+'}}</p></div><span class="small"><i class="dot" :class="{live:d.status==='live'}"></i>{{d.status}}</span></div><svg class="gauge" viewBox="0 0 220 220" aria-label="PM2.5 concentration gauge"><circle cx="110" cy="110" r="87" fill="none" stroke="#2b394a" stroke-width="12"/><circle cx="110" cy="110" r="87" fill="none" :stroke="i===0?'#66e1ba':'#83aefc'" stroke-width="12" stroke-linecap="round" :stroke-dasharray="`${Math.min(1,(d.pm25||0)/150)*547} 547`" transform="rotate(-90 110 110)"/><text x="110" y="106" fill="#f5f9fc" font-size="52" font-weight="700" text-anchor="middle">{{d.pm25==null?'—':Math.round(d.pm25)}}</text><text x="110" y="132" fill="#93a5ba" font-size="13" text-anchor="middle">µg/m³ PM2.5</text></svg><div class="foot"><span class="quality" :style="{color:i===0?'#66e1ba':'#83aefc'}">{{d.pm25==null?'Awaiting connection':d.pm25<=15?'Low particulate level':d.pm25<=35?'Elevated particulate level':'High particulate level'}}</span><span>{{d.timestamp?new Date(d.timestamp*1000).toLocaleTimeString():'No readings yet'}}</span></div></article></div><section class="card section"><div class="sectionhead"><div><h2>Air quality over time</h2><p style="margin-top:6px">PM2.5 concentration · Last 24 hours</p></div><div class="legend"><span><i class="key" style="background:var(--mint)"></i>Xiaomi</span><span><i class="key" style="background:var(--blue)"></i>Philips</span></div></div><svg class="chart" viewBox="0 0 800 185" preserveAspectRatio="none"><line v-for="y in [25,75,125,175]" x1="0" x2="800" :y1="y" :y2="y" stroke="#2a394c" stroke-dasharray="4 6"/><polyline v-for="(line,i) in lines" :key="i" :points="line" fill="none" :stroke="i===0?'#66e1ba':'#83aefc'" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="between small"><span>24 hours ago</span><span>Now</span></div></section><p class="notice">{{demo?'Illustrative demo data only — not readings from your appliances.':'Readings refresh every 15 seconds; actual freshness depends on the connected data source.'}} PM2.5 (µg/m³) is not the same as official AQI.</p></main><main class="settings" v-show="tab==='settings'"><div class="hero"><div class="eyebrow">CONFIGURATION</div><h1>Connections.</h1><p>Set up the API endpoint for your personal dashboard.</p></div><div class="card"><h2>Backend connection</h2><p class="notice">For local development only. In production, protect the site with Cloudflare Access and use a same-origin authenticated backend proxy; do not save long-lived API keys in browser storage.</p><label>FastAPI URL<input v-model="url" placeholder="http://localhost:8000"></label><label>Temporary dashboard API key (memory only)<input v-model="key" type="password" placeholder="DASHBOARD_API_KEY"></label><button @click="connect()">Connect backend</button><button class="subtle" style="margin-left:10px" @click="preview()">Demo mode</button><p class="notice">{{error}}</p></div><div class="card section"><h2>Device connectors</h2><p class="notice">Xiaomi AC-M18-SC · Philips AC2221</p><p class="notice">Cloud authentication is not yet configured. Device integrations require validated provider access or a compatible external bridge. Until then, incoming readings can be submitted to the protected ingest API. The interface never claims a device is connected without a real reading.</p></div></main></div><script>
-function Dashboard(){return {tab:'overview',demo:true,online:false,url:'http://localhost:8000',key:'',error:'',devices:[{id:'xiaomi',name:'Xiaomi 4 Compact',model:'AC-M18-SC',pm25:18,status:'demo'},{id:'philips',name:'Philips AC2221',model:'AC2221',pm25:32,status:'demo'}],history:[],lines:[],start(){this.makeDemo();setInterval(()=>{if(!this.demo)this.refresh()},15000)},makeDemo(){this.lines=[0,1].map(i=>Array.from({length:48},(_,n)=>`${n*800/47},${Math.max(10,110+Math.sin(n/4+i)*25+Math.cos(n/7+i)*19+(i?10:0))}`).join(' '))},preview(){this.demo=true;this.online=false;this.error='Preview enabled';this.devices.forEach((d,i)=>{d.pm25=i?32:18;d.status='demo'});this.makeDemo()},async connect(){this.demo=false;await this.refresh()},async refresh(){try{let h={'Authorization':'Bearer '+this.key};let res=await fetch(this.url.replace(/\/$/,'')+'/api/devices',{headers:h});if(!res.ok)throw Error('API returned '+res.status);this.devices=await res.json();this.online=true;this.error='Backend connected';let results=await Promise.all(this.devices.map(d=>fetch(this.url.replace(/\/$/,'')+'/api/history?device='+encodeURIComponent(d.id),{headers:h}).then(r=>r.ok?r.json():[])));this.lines=results.map(arr=>arr.length>1?arr.map((p,i)=>`${i*800/(arr.length-1)},${Math.max(5,175-Math.min(150,p.pm25)*1.08)}`).join(' '):'')}catch(e){this.online=false;this.error=e.message;this.devices.forEach(d=>d.status='offline')} }} } window.addEventListener('load',()=>PetiteVue.createApp({Dashboard}).mount());
-</script></body></html>
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Atmosphere · Personal Command Center</title>
+    <script defer src="https://unpkg.com/petite-vue@0.4.1/dist/petite-vue.iife.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #090e17;
+            --panel: #121b29;
+            --line: #243246;
+            --muted: #8d9caf;
+            --text: #f1f5fa;
+            --mint: #66e1ba;
+            --blue: #83aefc
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            margin: 0;
+            background: radial-gradient(ellipse at 85% 0%, #14243b 0%, transparent 38%), var(--bg);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif
+        }
+
+        button,
+        input {
+            font: inherit
+        }
+
+        .shell {
+            max-width: 1200px;
+            margin: auto;
+            padding: 35px 32px 70px
+        }
+
+        .top,
+        .between {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px
+        }
+
+        .logo {
+            background: #223147;
+            border: 1px solid #36475e;
+            padding: 10px;
+            border-radius: 13px;
+            font-size: 22px
+        }
+
+        .brand strong {
+            font: 800 19px Manrope
+        }
+
+        .small {
+            font-size: 12px;
+            color: var(--muted)
+        }
+
+        .nav {
+            display: flex;
+            gap: 8px
+        }
+
+        .nav button,
+        .subtle {
+            border: 1px solid var(--line);
+            background: #152033;
+            color: #b7c5d6;
+            padding: 10px 15px;
+            border-radius: 11px;
+            cursor: pointer
+        }
+
+        .nav button.active {
+            color: white;
+            background: #253750
+        }
+
+        .hero {
+            margin: 60px 0 32px
+        }
+
+        .eyebrow {
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 11px;
+            color: #8da1b8;
+            font-weight: 700
+        }
+
+        .hero h1 {
+            font: 800 clamp(30px, 4vw, 47px) Manrope;
+            letter-spacing: -2px;
+            margin: 12px 0
+        }
+
+        .hero p {
+            color: var(--muted);
+            margin: 0
+        }
+
+        .pill {
+            border: 1px solid #2b4d4b;
+            color: var(--mint);
+            background: #14312e;
+            padding: 9px 13px;
+            border-radius: 30px;
+            font-size: 12px
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 20px
+        }
+
+        .card {
+            background: linear-gradient(145deg, #172234, #101925);
+            border: 1px solid var(--line);
+            border-radius: 21px;
+            padding: 27px;
+            min-width: 0
+        }
+
+        .cardhead {
+            display: flex;
+            align-items: start;
+            justify-content: space-between
+        }
+
+        .card h2 {
+            font: 700 18px Manrope;
+            margin: 0 0 7px
+        }
+
+        .card p {
+            color: var(--muted);
+            font-size: 13px;
+            margin: 0
+        }
+
+        .dot {
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #657184;
+            margin-right: 7px
+        }
+
+        .dot.live {
+            background: var(--mint);
+            box-shadow: 0 0 14px #4ce8ad
+        }
+
+        .gauge {
+            width: 220px;
+            height: 220px;
+            max-width: 100%;
+            margin: 23px auto 17px;
+            display: block
+        }
+
+        .gauge circle {
+            transition: stroke-dasharray .5s
+        }
+
+        .gauge text {
+            font-family: Manrope
+        }
+
+        .foot {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid var(--line);
+            padding-top: 18px;
+            color: var(--muted);
+            font-size: 12px
+        }
+
+        .quality {
+            font-weight: 700
+        }
+
+        .section {
+            margin-top: 22px
+        }
+
+        .sectionhead {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px
+        }
+
+        .sectionhead h2 {
+            font: 700 17px Manrope;
+            margin: 0
+        }
+
+        .chart {
+            width: 100%;
+            height: 185px;
+            display: block
+        }
+
+        .legend {
+            display: flex;
+            gap: 22px;
+            color: var(--muted);
+            font-size: 12px
+        }
+
+        .key {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 7px
+        }
+
+        .settings {
+            margin-top: 24px
+        }
+
+        .settings input {
+            background: #0d1522;
+            color: white;
+            border: 1px solid #35455b;
+            border-radius: 10px;
+            padding: 11px;
+            width: 100%;
+            margin: 7px 0 14px
+        }
+
+        .settings label {
+            font-size: 12px;
+            color: #aebdd0;
+            display: block
+        }
+
+        .settings button {
+            background: #d9e9f8;
+            color: #101824;
+            border: 0;
+            border-radius: 10px;
+            padding: 11px 16px;
+            cursor: pointer
+        }
+
+        .notice {
+            color: #a9bbcf;
+            font-size: 13px;
+            line-height: 1.6
+        }
+
+        .hidden {
+            display: none !important
+        }
+
+        @media(max-width:720px) {
+            .shell {
+                padding: 23px 17px
+            }
+
+            .cards {
+                grid-template-columns: 1fr
+            }
+
+            .hero {
+                margin: 40px 0 25px
+            }
+
+            .nav button {
+                padding: 9px
+            }
+
+            .card {
+                padding: 22px
+            }
+
+            .gauge {
+                width: 190px;
+                height: 190px
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="shell" v-scope="Dashboard()" @vue:mounted="start()">
+        <header class="top">
+            <div class="brand"><span class="logo">◈</span>
+                <div><strong>Atmosphere</strong>
+                    <div class="small">PERSONAL COMMAND CENTER</div>
+                </div>
+            </div>
+            <div class="nav"><button :class="{active:tab==='overview'}" @click="tab='overview'">Overview</button><button
+                    :class="{active:tab==='settings'}" @click="tab='settings'">Settings</button>
+                <button onclick="location.href='/logout'">Sign out</button>
+            </div>
+        </header>
+        <main v-show="tab==='overview'">
+            <div class="hero">
+                <div class="between">
+                    <div>
+                        <div class="eyebrow">YOUR SPACE · AIR QUALITY</div>
+                        <h1>Room to breathe.</h1>
+                        <p>A clearer picture of the air around you.</p>
+                    </div><span class="pill">
+                        ● {{demo ? 'Preview mode' :
+                            !online ? 'Backend offline' :
+                            devices.some(d => d.status === 'live') ? 'Live readings' :
+                            'Backend connected · Devices pending'}}
+                    </span>
+                </div>
+            </div>
+            <div class="cards">
+                <article class="card" v-for="(d,i) in devices" :key="d.id">
+                    <div class="cardhead">
+                        <div>
+                            <h2>{{d.name}}</h2>
+                            <p>{{d.model}} · {{i===0?'Xiaomi Home':'Philips Air+'}}</p>
+                        </div><span class="small"><i class="dot"
+                                :class="{live:d.status==='live'}"></i>{{d.status}}</span>
+                    </div><svg class="gauge" viewBox="0 0 220 220" aria-label="PM2.5 concentration gauge">
+                        <circle cx="110" cy="110" r="87" fill="none" stroke="#2b394a" stroke-width="12" />
+                        <circle cx="110" cy="110" r="87" fill="none" :stroke="i===0?'#66e1ba':'#83aefc'"
+                            stroke-width="12" stroke-linecap="round"
+                            :stroke-dasharray="`${Math.min(1,(d.pm25||0)/150)*547} 547`"
+                            transform="rotate(-90 110 110)" /><text x="110" y="106" fill="#f5f9fc" font-size="52"
+                            font-weight="700" text-anchor="middle">{{d.pm25==null?'—':Math.round(d.pm25)}}</text><text
+                            x="110" y="132" fill="#93a5ba" font-size="13" text-anchor="middle">µg/m³ PM2.5</text>
+                    </svg>
+                    <div class="foot"><span class="quality"
+                            :style="{color:i===0?'#66e1ba':'#83aefc'}">{{d.pm25==null?'Awaiting connection':d.pm25
+                            <=15?'Low particulate level':d.pm25<=35?'Elevated particulate level':'High particulate
+                                level'}}</span><span>{{d.timestamp?new Date(d.timestamp*1000).toLocaleTimeString():'No
+                                    readings yet'}}</span></div>
+                </article>
+            </div>
+            <section class="card section">
+                <div class="sectionhead">
+                    <div>
+                        <h2>Air quality over time</h2>
+                        <p style="margin-top:6px">PM2.5 concentration · Last 24 hours</p>
+                    </div>
+                    <div class="legend"><span><i class="key" style="background:var(--mint)"></i>Xiaomi</span><span><i
+                                class="key" style="background:var(--blue)"></i>Philips</span></div>
+                </div><svg class="chart" viewBox="0 0 800 185" preserveAspectRatio="none">
+                    <line v-for="y in [25,75,125,175]" x1="0" x2="800" :y1="y" :y2="y" stroke="#2a394c"
+                        stroke-dasharray="4 6" />
+                    <polyline v-for="(line,i) in lines" :key="i" :points="line" fill="none"
+                        :stroke="i===0?'#66e1ba':'#83aefc'" stroke-width="3" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+                <div class="between small"><span>24 hours ago</span><span>Now</span></div>
+            </section>
+            <p class="notice">{{demo?'Illustrative demo data only — not readings from your appliances.':'Readings
+                refresh every 15 seconds; actual freshness depends on the connected data source.'}} PM2.5 (µg/m³) is not
+                the same as official AQI.</p>
+        </main>
+        <main class="settings" v-show="tab==='settings'">
+            <div class="hero">
+                <div class="eyebrow">CONFIGURATION</div>
+                <h1>Connections.</h1>
+                <p>Your dashboard connects automatically through Cloudflare.</p>
+            </div>
+            <div class="card">
+                <h2>Backend connection</h2>
+                <p class="notice">
+                    Atmosphere connects to FastAPI through a protected Cloudflare API proxy.
+                    Backend credentials are never exposed to your browser.
+                </p><button @click="connect()">Connect
+                    backend</button><button class="subtle" style="margin-left:10px" @click="preview()">Demo
+                    mode</button>
+                <p class="notice">{{error}}</p>
+            </div>
+            <div class="card section">
+                <h2>Device connectors</h2>
+                <p class="notice">Xiaomi AC-M18-SC · Philips AC2221</p>
+                <p class="notice">Cloud authentication is not yet configured. Device integrations require validated
+                    provider access or a compatible external bridge. Until then, incoming readings can be submitted to
+                    the protected ingest API. The interface never claims a device is connected without a real reading.
+                </p>
+            </div>
+        </main>
+    </div>
+    <script>
+    function Dashboard() {
+      return {
+        tab: 'overview',
+        demo: false,
+        online: false,
+        url: '',
+        key: '',
+        error: '',
+        devices: [
+          {
+            id: 'xiaomi',
+            name: 'Xiaomi 4 Compact',
+            model: 'AC-M18-SC',
+            pm25: null,
+            status: 'unconfigured'
+          },
+          {
+            id: 'philips',
+            name: 'Philips AC2221',
+            model: 'AC2221',
+            pm25: null,
+            status: 'unconfigured'
+          }
+        ],
+        history: [],
+        lines: [],
+
+        start() {
+          this.refresh();
+          setInterval(() => {
+            if (!this.demo) this.refresh();
+          }, 15000);
+        },
+
+        makeDemo() {
+          this.lines = [0, 1].map(i =>
+            Array.from({ length: 48 }, (_, n) =>
+              `${n * 800 / 47},${
+                Math.max(
+                  10,
+                  110 + Math.sin(n / 4 + i) * 25 +
+                  Math.cos(n / 7 + i) * 19 +
+                  (i ? 10 : 0)
+                )
+              }`
+            ).join(' ')
+          );
+        },
+
+        preview() {
+          this.demo = true;
+          this.online = false;
+          this.error = 'Illustrative preview enabled';
+
+          this.devices.forEach((d, i) => {
+            d.pm25 = i ? 32 : 18;
+            d.status = 'demo';
+            d.timestamp = null;
+          });
+
+          this.makeDemo();
+          this.tab = 'overview';
+        },
+
+        async connect() {
+          this.demo = false;
+          this.url = '';
+          this.key = '';
+          await this.refresh();
+        },
+
+        async refresh() {
+          try {
+            const response = await fetch('/api/devices', {
+              credentials: 'same-origin',
+              cache: 'no-store'
+            });
+
+            if (response.status === 401) {
+              window.location.assign('/login');
+              return;
+            }
+
+            if (!response.ok) {
+              throw new Error(`Device API returned ${response.status}`);
+            }
+
+            const devices = await response.json();
+
+            if (!Array.isArray(devices)) {
+              throw new Error('Unexpected device response');
+            }
+
+            const histories = await Promise.all(
+              devices.map(async device => {
+                const result = await fetch(
+                  '/api/history?device=' +
+                  encodeURIComponent(device.id) +
+                  '&hours=24',
+                  {
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                  }
+                );
+
+                if (result.status === 401) {
+                  window.location.assign('/login');
+                  throw new Error('Session expired');
+                }
+
+                if (!result.ok) {
+                  throw new Error(
+                    `History API returned ${result.status}`
+                  );
+                }
+
+                return await result.json();
+              })
+            );
+
+            this.devices = devices;
+            this.history = histories;
+            this.demo = false;
+            this.online = true;
+            this.error = '';
+
+            // Shared 24-hour timestamp axis for both devices.
+            const now = Date.now() / 1000;
+            const start = now - 86400;
+
+            this.lines = histories.map(readings => {
+              if (!Array.isArray(readings) || !readings.length) {
+                return '';
+              }
+
+              return readings
+                .filter(p =>
+                  Number.isFinite(p.ts) &&
+                  Number.isFinite(p.pm25)
+                )
+                .map(p => {
+                  const x = Math.max(
+                    0,
+                    Math.min(800, (p.ts - start) / 86400 * 800)
+                  );
+
+                  const y = Math.max(
+                    5,
+                    175 - Math.min(150, p.pm25) * 1.08
+                  );
+
+                  return `${x},${y}`;
+                })
+                .join(' ');
+            });
+
+          } catch (error) {
+            this.online = false;
+            this.error = error.message;
+
+            if (!this.demo) {
+              this.devices.forEach(d => {
+                d.status = 'offline';
+                d.pm25 = null;
+              });
+              this.lines = [];
+            }
+          }
+        }
+      };
+    }
+
+    window.addEventListener('load', () => {
+      PetiteVue.createApp({ Dashboard }).mount();
+    });
+    </script>
+</body>
+
+</html>
