@@ -6,6 +6,8 @@ import json
 import logging
 import os
 import random
+import queue
+import concurrent.futures
 import re
 import secrets
 import ssl
@@ -21,6 +23,24 @@ LOG = logging.getLogger('atmosphere.philips')
 AIR = 'https://www.api.air.philips.com/'
 APP_ID = '9fd505fa9c7111e9a1e3061302926720'
 MODEL = 'AC2221/13'
+
+# Commands are consumed by the single persistent MQTT task.
+POWER_COMMANDS = queue.Queue(maxsize=8)
+
+def request_power(desired):
+    if type(desired) is not bool:
+        raise ValueError('Power must be boolean')
+    future = concurrent.futures.Future()
+    try:
+        POWER_COMMANDS.put_nowait((desired, future))
+    except queue.Full:
+        raise RuntimeError('Philips command queue full')
+    try:
+        return future.result(timeout=35)
+    except concurrent.futures.TimeoutError:
+        future.cancel()
+        raise TimeoutError('Philips power confirmation timed out')
+
 
 
 def save_credentials(connection, payload):
@@ -110,6 +130,8 @@ class ShadowReader:
         self.last_update = 0.0
         self.ready = threading.Event()
         self.disconnected = threading.Event()
+        self.command_accepted = threading.Event()
+        self.command_rejected = threading.Event()
         self.prefix = f'$aws/things/{did}/shadow'
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id,
                                   transport='websockets', reconnect_on_failure=False)
@@ -126,10 +148,16 @@ class ShadowReader:
             return
         client.subscribe([(self.prefix + '/get/accepted', 1),
                           (self.prefix + '/update/documents', 1),
-                          (self.prefix + '/update/accepted', 1)], qos=1)
+                          (self.prefix + '/update/accepted', 1),
+                          (self.prefix + '/update/rejected', 1)], qos=1)
         client.publish(self.prefix + '/get', json.dumps({'clientToken': secrets.token_hex(12)}), qos=1)
 
     def _on_message(self, client, userdata, message):
+        if message.topic == self.prefix + '/update/rejected':
+            self.command_rejected.set()
+            return
+        if message.topic == self.prefix + '/update/accepted':
+            self.command_accepted.set()
         if len(message.payload) > 262144:
             return
         try:
@@ -156,6 +184,16 @@ class ShadowReader:
 
     def read(self):
         self.client.publish(self.prefix + '/get', json.dumps({'clientToken': secrets.token_hex(12)}), qos=1)
+
+    def set_power(self, desired):
+        self.command_accepted.clear()
+        self.command_rejected.clear()
+        result = self.client.publish(self.prefix + '/update', json.dumps({
+            'clientToken': secrets.token_hex(12),
+            'state': {'desired': {'D03102': int(desired)}}
+        }), qos=1, retain=False)
+        if result.rc != mqtt.MQTT_ERR_SUCCESS:
+            raise RuntimeError('Philips MQTT publish failed')
 
     def snapshot(self):
         with self.lock:
@@ -184,9 +222,40 @@ async def run_forever(connect_db):
             delay = 2
             last_persisted = None
             last_requested = 0.0
+            pending = None  # (desired, future, deadline, observed_before)
             while not reader.disconnected.is_set():
                 state, updated = reader.snapshot()
                 now = time.monotonic()
+                if pending is None:
+                    try:
+                        desired, future = POWER_COMMANDS.get_nowait()
+                    except queue.Empty:
+                        pass
+                    else:
+                        if not future.cancelled():
+                            try:
+                                before = state.get('D03102')
+                                reader.set_power(desired)
+                                pending = (desired, future, now + 25, before)
+                            except Exception as exc:
+                                future.set_exception(exc)
+                if pending is not None:
+                    desired, future, deadline, before = pending
+                    current = state.get('D03102')
+                    if future.cancelled():
+                        pending = None
+                    elif reader.command_rejected.is_set():
+                        future.set_exception(RuntimeError('Philips rejected power command'))
+                        pending = None
+                    elif reader.command_accepted.is_set() and type(current) in (int, bool) and int(current) == int(desired) and (int(before) != int(desired) if type(before) in (int, bool) else True):
+                        future.set_result({'status': 'confirmed', 'power_on': desired})
+                        pending = None
+                    elif now >= deadline:
+                        future.set_result({'status': 'pending', 'power_on': None})
+                        pending = None
+                    elif now - last_requested >= 2:
+                        reader.read()
+                        last_requested = now
                 if now - last_requested >= 30:
                     reader.read()
                     last_requested = now
@@ -205,7 +274,9 @@ async def run_forever(connect_db):
                             db.execute("INSERT INTO readings(device,pm25,ts) VALUES('philips',%s,%s)",
                                        (float(pm), int(time.time())))
                         last_persisted = snapshot
-                await asyncio.sleep(5)
+                await asyncio.sleep(0.5)
+            if pending is not None and not pending[1].done():
+                pending[1].set_exception(RuntimeError('Philips MQTT disconnected'))
             raise RuntimeError('Philips MQTT disconnected')
         except asyncio.CancelledError:
             raise
@@ -214,5 +285,13 @@ async def run_forever(connect_db):
             await asyncio.sleep(delay + random.uniform(0, 1))
             delay = min(60, delay * 2)
         finally:
+            # Fail queued commands promptly when the MQTT session is unavailable.
+            while True:
+                try:
+                    _, queued_future = POWER_COMMANDS.get_nowait()
+                except queue.Empty:
+                    break
+                if not queued_future.done():
+                    queued_future.set_exception(RuntimeError('Philips cloud unavailable'))
             if reader is not None:
                 await asyncio.to_thread(reader.close)

@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from xiaomi_collector import init_schema, save_profile, collect, set_xiaomi_power
-from philips_cloud import save_credentials, run_forever
+from philips_cloud import save_credentials, run_forever, request_power
 
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -211,7 +211,7 @@ def devices(authorization: str | None = Header(None)):
             "power_on": power_on,
             "reachable": reachable,
             "state_timestamp": state["updated_at"] if state else None,
-            "integration": "xiaomi cloud" if device_id == "xiaomi" else "external bridge required",
+            "integration": "xiaomi cloud" if device_id == "xiaomi" else "philips air+ cloud",
         })
 
     return result
@@ -327,3 +327,15 @@ def philips_onboard(bundle: dict, authorization: str | None = Header(None)):
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {'ok': True, 'provider': 'philips'}
+
+
+@app.post('/internal/philips/power', include_in_schema=False)
+def philips_power(command: PowerCommand, authorization: str | None = Header(None)):
+    authorize(authorization, os.getenv('CONTROL_API_KEY', ''))
+    try:
+        return request_power(command.power_on)
+    except TimeoutError:
+        raise HTTPException(504, 'Philips power confirmation timed out')
+    except RuntimeError as exc:
+        logging.getLogger('atmosphere').warning('Philips control unavailable: %s', type(exc).__name__)
+        raise HTTPException(503, 'Philips control unavailable')

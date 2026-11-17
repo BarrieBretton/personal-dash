@@ -201,7 +201,7 @@ export default {
       return Response.redirect(new URL("/login", request.url), 302);
     }
 
-    if (path === "/api/xiaomi/power") {
+    if (path === "/api/xiaomi/power" || path === "/api/philips/power") {
       if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
       if (request.headers.get("Origin") !== url.origin ||
           request.headers.get("X-Atmosphere-Action") !== "power") {
@@ -215,7 +215,7 @@ export default {
       if (!body || typeof body.power_on !== "boolean" || Object.keys(body).length !== 1) {
         return new Response("Invalid power command", { status: 400 });
       }
-      const target = new URL('/internal/xiaomi/power', env.API_BASE_URL);
+      const target = new URL(path === '/api/philips/power' ? '/internal/philips/power' : '/internal/xiaomi/power', env.API_BASE_URL);
       if (target.protocol !== 'https:') return new Response('Invalid backend', { status: 503 });
       try {
         const response = await fetch(target.toString(), {

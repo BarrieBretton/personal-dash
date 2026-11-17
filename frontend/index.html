@@ -364,6 +364,12 @@
                     <div class="foot"><span class="quality"
                             :style="{color:quality(d.pm25).color}">{{quality(d.pm25).label}}</span><span>{{d.timestamp?new Date(d.timestamp*1000).toLocaleTimeString():'No
                                     readings yet'}}</span></div>
+                    <div class="power-row" v-if="d.id==='philips'">
+                      <span class="power-note">{{philipsBusy?'Sending command…':philipsError || (d.power_on==null?'Power status unavailable':'Power control · Philips Air+')}}</span>
+                      <button class="power-control" type="button" :aria-pressed="d.power_on===true"
+                        :disabled="philipsBusy || demo || !online || d.status!=='live' || typeof d.power_on!=='boolean'"
+                        @click="togglePhilips(d)">{{philipsBusy?'Please wait…':d.power_on===true?'Turn off':'Turn on'}}</button>
+                    </div>
                     <div class="power-row" v-if="d.id==='xiaomi'">
                       <span class="power-note">{{powerBusy?'Sending command…':powerError || (d.power_on===null || d.power_on===undefined ? 'Power status unavailable' : 'Power control · Xiaomi Cloud')}}</span>
                       <button class="power-control" type="button"
@@ -442,6 +448,9 @@
         refreshing: false,
         powerBusy: false,
         powerError: '',
+        philipsBusy: false,
+        philipsError: '',
+        pendingPhilipsPower: null,
         pendingPowerState: null, // POWER_CONFIRMATION_PATCH_V1
         devices: [
           {
@@ -493,6 +502,35 @@
           document.addEventListener('visibilitychange', () => {
             if (!document.hidden && !this.demo && !this.powerBusy) this.refresh();
           });
+        },
+
+        async togglePhilips(device) {
+          if (this.philipsBusy || device.status !== 'live' || typeof device.power_on !== 'boolean') return;
+          this.philipsBusy = true;
+          this.philipsError = '';
+          const desired = !device.power_on;
+          this.pendingPhilipsPower = desired;
+          try {
+            const response = await fetch('/api/philips/power', {
+              method: 'POST', credentials: 'same-origin', cache: 'no-store',
+              headers: {'Content-Type':'application/json','X-Atmosphere-Action':'power'},
+              body: JSON.stringify({power_on: desired})
+            });
+            if (response.status === 401) { location.assign('/login'); return; }
+            if (!response.ok) throw new Error('Philips command failed (HTTP ' + response.status + ')');
+            const result = await response.json();
+            if (result.status === 'confirmed') {
+              this.pendingPhilipsPower = null;
+            } else {
+              this.philipsError = 'Command sent; waiting for device confirmation';
+            }
+          } catch (error) {
+            this.pendingPhilipsPower = null;
+            this.philipsError = error.message;
+          } finally {
+            this.philipsBusy = false;
+            await this.refresh();
+          }
         },
 
         async toggleXiaomi(device) {
@@ -622,6 +660,12 @@
               this.powerError = '';
             }
             // Replace device objects atomically so power-state changes render immediately.
+            const philips = devices.find(d => d.id === 'philips');
+            if (this.pendingPhilipsPower !== null && philips?.status === 'live' &&
+                philips.power_on === this.pendingPhilipsPower) {
+              this.pendingPhilipsPower = null;
+              this.philipsError = '';
+            }
             this.devices = devices;
             this.history = histories;
             this.demo = false;
