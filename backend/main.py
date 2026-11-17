@@ -9,6 +9,7 @@ from psycopg.rows import dict_row
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from xiaomi_collector import init_schema, save_profile, collect
 
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -57,6 +58,7 @@ async def lifespan(app):
             CREATE INDEX IF NOT EXISTS readings_device_ts
             ON readings(device, ts DESC)
         """)
+        init_schema(c)
     yield
 
 
@@ -194,3 +196,26 @@ def ingest(
         """, (reading.device, reading.pm25, ts))
 
     return {"ok": True}
+
+
+@app.post('/internal/xiaomi/onboard', include_in_schema=False)
+def xiaomi_onboard(bundle: dict, authorization: str | None = Header(None)):
+    authorize(authorization, os.getenv('XIAOMI_ONBOARDING_KEY', ''))
+    try:
+        with conn() as c:
+            save_profile(c, bundle)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {'ok': True, 'provider': 'xiaomi'}
+
+
+@app.post('/internal/xiaomi/collect', include_in_schema=False)
+def xiaomi_collect(authorization: str | None = Header(None)):
+    authorize(authorization, os.getenv('COLLECTOR_API_KEY', ''))
+    try:
+        with conn() as c:
+            return collect(c)
+    except Exception:
+        import logging
+        logging.getLogger('atmosphere').exception('Xiaomi collection failed')
+        raise HTTPException(502, 'Xiaomi collection failed; inspect server logs')
