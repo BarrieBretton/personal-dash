@@ -116,11 +116,10 @@ def set_xiaomi_power(connection, desired: bool):
     """Change the power property, then verify it from Xiaomi Cloud."""
     if not isinstance(desired, bool):
         raise ValueError('Power value must be boolean')
-    lock = connection.execute(
-        'SELECT pg_advisory_xact_lock(%s) AS locked', (761902441,)
-    ).fetchone()['locked']
-    if not lock:
-        return {'status': 'busy'}
+    connection.execute(
+        'SELECT pg_advisory_xact_lock(%s)',
+        (761902441,)
+    )
     bundle = load_profile(connection)
     with tempfile.TemporaryDirectory(prefix='atmosphere-xiaomi-control-') as directory:
         profile = Profile('default', root=Path(directory))
