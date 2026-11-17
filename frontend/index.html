@@ -442,6 +442,7 @@
         refreshing: false,
         powerBusy: false,
         powerError: '',
+        pendingPowerState: null, // POWER_CONFIRMATION_PATCH_V1
         devices: [
           {
             id: 'xiaomi',
@@ -498,8 +499,9 @@
           if (this.powerBusy || device.status !== 'live' || typeof device.power_on !== 'boolean') return;
           this.powerBusy = true;
           this.powerError = '';
+          const desired = !device.power_on;
+          this.pendingPowerState = desired;
           try {
-            const desired = !device.power_on;
             const response = await fetch('/api/xiaomi/power', {
               method: 'POST', credentials: 'same-origin', cache: 'no-store',
               headers: {'Content-Type':'application/json','X-Atmosphere-Action':'power'},
@@ -508,10 +510,14 @@
             if (response.status === 401) { location.assign('/login'); return; }
             if (!response.ok) throw new Error('Power command failed (HTTP ' + response.status + ')');
             const result = await response.json();
-            if (result.status !== 'confirmed') {
+            if (result.status === 'confirmed') {
+              this.pendingPowerState = null;
+              this.powerError = '';
+            } else {
               this.powerError = 'Command sent; waiting for device confirmation';
             }
           } catch (error) {
+            this.pendingPowerState = null;
             this.powerError = error.message;
           } finally {
             this.powerBusy = false;
@@ -607,6 +613,14 @@
               })
             );
 
+            // Clear pending confirmation once fresh cloud telemetry matches.
+            const xiaomi = devices.find(d => d.id === 'xiaomi');
+            if (this.pendingPowerState !== null &&
+                xiaomi?.status === 'live' &&
+                xiaomi.power_on === this.pendingPowerState) {
+              this.pendingPowerState = null;
+              this.powerError = '';
+            }
             // Replace device objects atomically so power-state changes render immediately.
             this.devices = devices;
             this.history = histories;
