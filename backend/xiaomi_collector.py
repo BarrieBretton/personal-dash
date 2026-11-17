@@ -117,7 +117,7 @@ def set_xiaomi_power(connection, desired: bool):
     if not isinstance(desired, bool):
         raise ValueError('Power value must be boolean')
     lock = connection.execute(
-        'SELECT pg_try_advisory_xact_lock(%s) AS locked', (761902441,)
+        'SELECT pg_advisory_xact_lock(%s) AS locked', (761902441,)
     ).fetchone()['locked']
     if not lock:
         return {'status': 'busy'}
