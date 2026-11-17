@@ -2,6 +2,9 @@
 import os
 import time
 import hmac
+import asyncio
+import logging
+
 from contextlib import asynccontextmanager
 
 import psycopg
@@ -43,6 +46,45 @@ def conn():
     )
 
 
+POLL_INTERVAL_SECONDS = 5
+logger = logging.getLogger("atmosphere.poller")
+
+
+def collect_xiaomi_once():
+    with conn() as connection:
+        return collect(connection)
+
+
+async def xiaomi_polling_loop():
+    logger.info(
+        "Xiaomi polling started; interval=%s seconds",
+        POLL_INTERVAL_SECONDS,
+    )
+
+    while True:
+        try:
+            result = await asyncio.to_thread(collect_xiaomi_once)
+
+            if result.get("status") == "collected":
+                logger.info(
+                    "Xiaomi PM2.5=%s",
+                    result.get("pm25"),
+                )
+            else:
+                logger.info(
+                    "Xiaomi collection: %s",
+                    result.get("status"),
+                )
+
+        except asyncio.CancelledError:
+            raise
+
+        except Exception:
+            logger.exception("Xiaomi polling failed")
+
+        await asyncio.sleep(POLL_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(app):
     with conn() as c:
@@ -59,7 +101,18 @@ async def lifespan(app):
             ON readings(device, ts DESC)
         """)
         init_schema(c)
-    yield
+
+    poller = asyncio.create_task(xiaomi_polling_loop())
+
+    try:
+        yield
+    finally:
+        poller.cancel()
+
+        try:
+            await asyncio.wait_for(poller, timeout=10)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
 
 
 app = FastAPI(
