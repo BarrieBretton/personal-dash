@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from xiaomi_collector import init_schema, save_profile, collect, set_xiaomi_power
+from philips_cloud import save_credentials, run_forever
 
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -103,14 +104,20 @@ async def lifespan(app):
         init_schema(c)
 
     poller = asyncio.create_task(xiaomi_polling_loop())
+    philips_task = asyncio.create_task(run_forever(conn))
 
     try:
         yield
     finally:
+        philips_task.cancel()
         poller.cancel()
 
         try:
             await asyncio.wait_for(poller, timeout=10)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
+        try:
+            await asyncio.wait_for(philips_task, timeout=10)
         except (asyncio.CancelledError, asyncio.TimeoutError):
             pass
 
@@ -309,3 +316,14 @@ def xiaomi_power(command: PowerCommand, authorization: str | None = Header(None)
     except Exception:
         logging.getLogger('atmosphere').exception('Xiaomi power control failed')
         raise HTTPException(502, 'Xiaomi power control failed')
+
+
+@app.post('/internal/philips/onboard', include_in_schema=False)
+def philips_onboard(bundle: dict, authorization: str | None = Header(None)):
+    authorize(authorization, os.getenv('PHILIPS_ONBOARDING_KEY', ''))
+    try:
+        with conn() as c:
+            save_credentials(c, bundle)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {'ok': True, 'provider': 'philips'}
